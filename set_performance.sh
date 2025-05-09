@@ -9,3 +9,4 @@ encore_mediatek_perf
 corin_perf
 mtkvest_perf
 qos_perf
+gamemode

@@ -1,5 +1,23 @@
 #!/system/bin/sh
+MODDIR=${0%/*}
 
+gamemode() {
+
+    GAMELIST="$MODDIR/gamelist.txt"
+    WHITELIST="$MODDIR/whitelist_apps.txt"
+    log "Killing background apps except those in gamelist or whitelist"
+
+    # Ambil semua package user
+    for pkg in $(cmd package list packages -3 | cut -f2 -d:); do
+        # Lewati jika ada di GAMELIST atau WHITELIST
+        if grep -Fxq "$pkg" "$GAMELIST" 2>/dev/null || grep -Fxq "$pkg" "$WHITELIST" 2>/dev/null; then
+            log "Skipped (whitelisted): $pkg"
+            continue
+        fi
+        # Coba force-stop
+        am force-stop "$pkg" && log "Killed: $pkg"
+    done
+}
 set_governor_all() {
     target="$1"
     state_file="/data/adb/modules/ThunderClash/.last_governor"
@@ -188,6 +206,22 @@ encore_mediatek_powersave() {
 		min_gpufreq_index=$(awk -F'[][]' '{print $2}' /proc/gpufreqv2/gpu_working_opp_table | sort -n | tail -1)
 		tweak "$min_gpufreq_index" /proc/gpufreqv2/fix_target_opp_index
 	fi
+}
+# Fungsi untuk kill semua background apps user (non-system)
+kill_background_apps() {
+    WHITELIST="/data/adb/modules/ThunderClash/whitelist_apps.txt"
+    log "Killing background apps (with whitelist)..."
+
+    # Ambil semua package yang sedang jalan (dari dumpsys atau ps)
+    for pkg in $(cmd package list packages -3 | cut -f2 -d:); do
+        # Lewati jika ada di whitelist
+        grep -qx "$pkg" "$WHITELIST" 2>/dev/null && {
+            log "Skipped (whitelisted): $pkg"
+            continue
+        }
+        # Coba force-stop
+        am force-stop "$pkg" && log "Killed: $pkg"
+    done
 }
 clear_cache() {
     sync
