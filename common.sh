@@ -1,8 +1,5 @@
 #!/system/bin/sh
-MODDIR=${0%/*}
-
 gamemode() {
-
     GAMELIST="$MODDIR/gamelist.txt"
     WHITELIST="$MODDIR/whitelist_apps.txt"
     log "Killing background apps except those in gamelist or whitelist"
