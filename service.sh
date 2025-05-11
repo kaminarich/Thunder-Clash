@@ -3,6 +3,8 @@
 MODDIR=${0%/*}
 
 # Jalankan monitor game dan layar di background
+sh $MODDIR/converter_game.sh &
+sh $MODDIR/converter_whitelist.sh &
 sh $MODDIR/monitor_screen.sh &
 sh $MODDIR/monitor_game.sh &
 

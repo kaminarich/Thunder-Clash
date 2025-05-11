@@ -15,18 +15,11 @@ set_governor_all() {
             done
             echo "$target" > "$state_file"
             su -lp 2000 -c "cmd notification post -S bigtext -t 'ThunderClash' Tag '$target Mode ON (policy)'"
+        else
+            log "Governor already set to $target, no change."
         fi
     else
-        # Gunakan path lama cpu*/cpufreq/
-        current=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)
-        if [ "$current" != "$target" ]; then
-            for cpu in /sys/devices/system/cpu/cpu[0-9]*; do
-                echo "$target" > "$cpu/cpufreq/scaling_governor" 2>/dev/null && \
-                log "Set $cpu to $target"
-            done
-            echo "$target" > "$state_file"
-            su -lp 2000 -c "cmd notification post -S bigtext -t 'ThunderClash' Tag '$target Mode ON (legacy)'"
-        fi
+        log "CPU policy path not found."
     fi
 }
 thunder_freq_little() {
@@ -52,8 +45,8 @@ thunder_freq_big() {
     done
 }
 gamemode() {
-    GAMELIST="$MODDIR/gamelist.txt"
-    WHITELIST="$MODDIR/whitelist_apps.txt"
+    GAMELIST="$MODDIR/gamelist_conv.txt"
+    WHITELIST="$MODDIR/whitelist_conv.txt"
     log "Killing background apps except those in gamelist or whitelist"
 
     # Ambil semua package user
@@ -287,7 +280,7 @@ encore_mediatek_powersave() {
 }
 # Fungsi untuk kill semua background apps user (non-system)
 kill_background_apps() {
-    WHITELIST="/data/adb/modules/ThunderClash/whitelist_apps.txt"
+    WHITELIST="/data/adb/modules/ThunderClash/whitelist_conv.txt"
     log "Killing background apps (with whitelist)..."
 
     # Ambil semua package yang sedang jalan (dari dumpsys atau ps)
