@@ -4,7 +4,7 @@ MODDIR=${0%/*}
 . $MODDIR/common.sh
 
 set_governor_all "powersave"
-reset_gpu_default
+set_gpu_powersave
 clear_cache    
 # Tunggu 5 menit
 sleep 300

@@ -116,9 +116,41 @@ tweak 1 /proc/gpufreqv2/gpm_mode
 echo 0 0 0 0 > /proc/sys/kernel/printk
 echo 0 > /sys/class/devfreq/13000000.mali/power
 echo on > /sys/class/devfreq/13000000.mali/power/control
-echo 1100000000 > /sys/class/devfreq/13000000.mali/target_freq
 # Pastikan GPU tidak dibatasi oleh buffer penuh
 echo 0 > /sys/class/devfreq/13000000.mali/enable
+}
+set_gpu_powersave() {
+    echo powersave > /sys/class/devfreq/13000000.mali/governor
+
+    # Reset scheduler tweaks ke default konservatif
+    echo 20000000 > /proc/sys/kernel/sched_latency_ns
+    echo 4000000  > /proc/sys/kernel/sched_min_granularity_ns
+    echo 2000000  > /proc/sys/kernel/sched_wakeup_granularity_ns
+    echo 500000   > /proc/sys/kernel/sched_migration_cost_ns
+    echo 950000   > /proc/sys/kernel/sched_rt_runtime_us
+
+    # Kembalikan clamp ke default (dinamis)
+    echo 1024 > /proc/sys/kernel/sched_util_clamp_max
+    echo 0    > /proc/sys/kernel/sched_util_clamp_min
+
+    # Gunakan OPP paling rendah (biasanya index tertinggi = freq paling rendah)
+    tweak 5 /proc/gpufreqv2/fix_target_opp_index  # Sesuaikan dengan jumlah OPP di device Anda
+
+    # Aktifkan aging_mode kembali (biarkan kernel optimasi daya)
+    tweak 1 /proc/gpufreqv2/aging_mode
+
+    # Gunakan GPM mode default
+    tweak 0 /proc/gpufreqv2/gpm_mode
+
+    # Aktifkan kembali limit_table jika tersedia
+    [ -f /proc/gpufreqv2/limit_table ] && echo 1 > /proc/gpufreqv2/limit_table
+
+    # Biarkan kernel mengatur power control
+    echo auto > /sys/class/devfreq/13000000.mali/power/control
+    echo 1 > /sys/class/devfreq/13000000.mali/enable
+
+    # Aktifkan kembali printk untuk debug minimal
+    echo 3 4 1 3 > /proc/sys/kernel/printk
 }
 qos_perf() {
     tweak 1 /sys/devices/platform/11bb00.qos/qos/qos_bound_enable || true
@@ -132,9 +164,6 @@ echo 0 > /sys/class/graphics/fb0/disable_vsync
 
 # Atau set ke refresh rate yang lebih tinggi (contoh untuk 120Hz)
 echo 120 > /sys/class/graphics/fb0/vsync_rate
-}
-reset_gpu_default() {
-    echo userspace > /sys/class/devfreq/13000000.mali/governor
 }
 # MediaTek Battery Saver Mode
 lite_profiles() {
