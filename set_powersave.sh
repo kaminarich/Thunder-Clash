@@ -6,7 +6,6 @@ MODDIR=${0%/*}
 set_governor_all "powersave"
 reset_gpu_default
 clear_cache    
-encore_mediatek_powersave
 # Tunggu 5 menit
 sleep 300
 # Cek ulang apakah layar masih mati

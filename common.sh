@@ -1,4 +1,56 @@
 #!/system/bin/sh
+# Atur frekuensi untuk CPU 0–5 (LITTLE)
+set_governor_all() {
+    target="$1"
+    state_file="/data/adb/modules/ThunderClash/.last_governor"
+    current=""
+
+    if [ -d /sys/devices/system/cpu/cpufreq/policy0 ]; then
+        # Gunakan path policy*
+        current=$(cat /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null)
+        if [ "$current" != "$target" ]; then
+            for policy in /sys/devices/system/cpu/cpufreq/policy*; do
+                echo "$target" > "$policy/scaling_governor" 2>/dev/null && \
+                log "Set $policy to $target"
+            done
+            echo "$target" > "$state_file"
+            su -lp 2000 -c "cmd notification post -S bigtext -t 'ThunderClash' Tag '$target Mode ON (policy)'"
+        fi
+    else
+        # Gunakan path lama cpu*/cpufreq/
+        current=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)
+        if [ "$current" != "$target" ]; then
+            for cpu in /sys/devices/system/cpu/cpu[0-9]*; do
+                echo "$target" > "$cpu/cpufreq/scaling_governor" 2>/dev/null && \
+                log "Set $cpu to $target"
+            done
+            echo "$target" > "$state_file"
+            su -lp 2000 -c "cmd notification post -S bigtext -t 'ThunderClash' Tag '$target Mode ON (legacy)'"
+        fi
+    fi
+}
+thunder_freq_little() {
+    MIN="$1"
+    MAX="$2"
+    log "Set LITTLE cores (CPU0-5) freq: min=$MIN max=$MAX"
+    for cpu in /sys/devices/system/cpu/cpu[0-5]; do
+        [ -e "$cpu/cpufreq/scaling_min_freq" ] && echo "$MIN" > "$cpu/cpufreq/scaling_min_freq"
+        [ -e "$cpu/cpufreq/scaling_max_freq" ] && echo "$MAX" > "$cpu/cpufreq/scaling_max_freq"
+        log "  ${cpu##*/}: $MIN - $MAX"
+    done
+}
+
+# Atur frekuensi untuk CPU 6–7 (BIG)
+thunder_freq_big() {
+    MIN="$1"
+    MAX="$2"
+    log "Set BIG cores (CPU6-7) freq: min=$MIN max=$MAX"
+    for cpu in /sys/devices/system/cpu/cpu6 /sys/devices/system/cpu/cpu7; do
+        [ -e "$cpu/cpufreq/scaling_min_freq" ] && echo "$MIN" > "$cpu/cpufreq/scaling_min_freq"
+        [ -e "$cpu/cpufreq/scaling_max_freq" ] && echo "$MAX" > "$cpu/cpufreq/scaling_max_freq"
+        log "  ${cpu##*/}: $MIN - $MAX"
+    done
+}
 gamemode() {
     GAMELIST="$MODDIR/gamelist.txt"
     WHITELIST="$MODDIR/whitelist_apps.txt"
@@ -15,22 +67,22 @@ gamemode() {
         am force-stop "$pkg" && log "Killed: $pkg"
     done
 }
-set_governor_all() {
-    target="$1"
-    state_file="/data/adb/modules/ThunderClash/.last_governor"
-    current=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)
+#set_governor_all() {
+    #target="$1"
+    #state_file="/data/adb/modules/ThunderClash/.last_governor"
+    #current=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)
 
-    if [ "$current" != "$target" ]; then
-        for cpu in /sys/devices/system/cpu/cpu[0-9]*; do
-            echo "$target" > "$cpu/cpufreq/scaling_governor"
-        done
+    #if [ "$current" != "$target" ]; then
+        #for cpu in /sys/devices/system/cpu/cpu[0-9]*; do
+            #echo "$target" > "$cpu/cpufreq/scaling_governor"
+        #done
 
-        echo "$target" > "$state_file"
+        #echo "$target" > "$state_file"
 
         # Kirim notifikasi hanya saat terjadi perubahan
-        su -lp 2000 -c "cmd notification post -S bigtext -t 'ThunderClash' Tag '$target Mode ON'"
-    fi
-}
+        #su -lp 2000 -c "cmd notification post -S bigtext -t 'ThunderClash' Tag '$target Mode ON'"
+    #fi
+#}
 
 set_gpu_performance() {
     echo performance > /sys/class/devfreq/13000000.mali/governor
