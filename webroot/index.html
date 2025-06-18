@@ -8,7 +8,6 @@
     <script type="module" crossorigin src="/assets/index-BS8Ox5MF.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-BmBQwOkh.css">
     <style>
-      /* Latar belakang transparan full screen */
       body {
         position: relative;
         overflow: hidden;
@@ -23,7 +22,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background-image: url('assets/background.png');
+        background-image: url('assets/background.gif');
         background-size: cover;
         background-position: center;
         background-attachment: fixed;
@@ -31,7 +30,6 @@
         z-index: -1;
       }
 
-      /* Header */
       header {
         background-color: rgba(30, 144, 255, 1);
         color: white;
@@ -42,7 +40,6 @@
         z-index: 10;
       }
 
-      /* Ikon ThunderClash */
       #custom-icon {
         position: fixed;
         top: 1px;
@@ -52,7 +49,6 @@
         z-index: 9999;
       }
 
-      /* Footer teks terima kasih */
       footer {
         position: absolute;
         bottom: 50px;
@@ -67,7 +63,6 @@
         z-index: 10;
       }
 
-      /* Tombol DONATE */
       .donate-button {
         position: absolute;
         bottom: 10px;
@@ -85,13 +80,11 @@
         z-index: 10;
       }
 
-      /* Efek hover untuk tombol DONATE */
       .donate-button:hover {
         background-color: #e68900;
-        transform: scale(1.1); /* Perbesar tombol */
+        transform: scale(1.1);
       }
 
-      /* Animasi fade */
       @keyframes fadeUp {
         from {
           opacity: 0;
@@ -113,10 +106,10 @@
     <div id="app"></div>
 
     <footer>
-      Thanks to: Encore | EncorinVest | MTKVest
+      Telegram: @kaminarich | @kaminarich_here
     </footer>
 
-    <button class="donate-button" onclick="window.open('https://ibb.co.com/tMG053xg', '_blank')">
+    <button class="donate-button" onclick="window.open('https://ibb.co.com/tMG053xg', '_blank', 'noopener,noreferrer')">
       DONATE
     </button>
   </body>

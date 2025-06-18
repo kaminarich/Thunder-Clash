@@ -1,0 +1,186 @@
+#!/system/bin/sh
+
+#==== [ UTILITIES ] ====
+apply() {
+    [ ! -f "$2" ] && return 1
+    chmod 644 "$2" 2>/dev/null
+    echo "$1" > "$2" 2>/dev/null
+    chmod 444 "$2" 2>/dev/null
+}
+
+write() {
+    [ ! -f "$2" ] && return 1
+    chmod 644 "$2" 2>/dev/null
+    echo "$1" > "$2" 2>/dev/null
+    chmod 444 "$2" 2>/dev/null
+}
+
+which_maxfreq() {
+    tr ' ' '\n' <"$1" | sort -nr | head -n 1
+}
+
+which_minfreq() {
+    tr ' ' '\n' <"$1" | grep -v '^[[:space:]]*$' | sort -n | head -n 1
+}
+
+which_midfreq() {
+    total_opp=$(wc -w <"$1")
+    mid_opp=$(((total_opp + 1) / 2))
+    tr ' ' '\n' <"$1" | grep -v '^[[:space:]]*$' | sort -nr | head -n $mid_opp | tail -n 1
+}
+
+#==== [ DEVFREQ UTILITY ] ====
+devfreq_mid_perf() {
+    [ ! -f "$1/available_frequencies" ] && return 1
+    max_freq=$(which_maxfreq "$1/available_frequencies")
+    mid_freq=$(which_midfreq "$1/available_frequencies")
+    apply "$max_freq" "$1/max_freq"
+    apply "$mid_freq" "$1/min_freq"
+}
+
+#==== [ DETECTORS ] ====
+detect_gpu_governor_path() {
+    for path in \
+        /sys/class/devfreq/*mali*/governor \
+        /sys/class/devfreq/*gpu*/governor \
+        /sys/devices/platform/*mali*/devfreq/*/governor \
+        /sys/devices/platform/soc/*gpu*/governor \
+        /sys/devices/platform/*gpu*/governor
+    do
+        [ -f "$path" ] && { echo "$path"; return 0; }
+    done
+    local fallback="/sys/class/devfreq/13000000.mali/governor"
+    [ -f "$fallback" ] && echo "$fallback"
+}
+
+detect_cpu_governor_paths() {
+    for path in /sys/devices/system/cpu/cpufreq/policy*/scaling_governor; do
+        [ -f "$path" ] && echo "$path"
+    done
+}
+
+#==== [ GPU CONFIG ] ====
+set_gpu_balance() {
+    local path=$(detect_gpu_governor_path)
+    [ -n "$path" ] || return
+    apply userspace "$path"
+}
+
+#==== [ CPU CONFIG ] ====
+set_governor_schedutil() {
+    local cpu_paths=$(detect_cpu_governor_paths)
+    for path in $cpu_paths; do
+        apply schedutil "$path"
+    done
+}
+
+#==== [ CPUSET & GPU MTK TWEAKS ] ====
+fix_cpuset() {
+    apply "0-6" /dev/cpuset/top-app/cpus
+    apply "0-5" /dev/cpuset/foreground/cpus
+    apply "0-6" /dev/cpuset/foreground_window/cpus
+    apply "0-3" /dev/cpuset/background/cpus
+    apply "0-3" /dev/cpuset/system-background/cpus
+    apply "0-2" /dev/cpuset/restricted/cpus
+    apply "0-3" /dev/cpuset/camera-daemon/cpus
+
+    apply 0 /sys/kernel/ged/hal/custom_enable_kpi
+    apply 1 /sys/kernel/ged/gpu_tuner/custom_hint_set
+    apply 0 /sys/kernel/ged/gpu_tuner/debug
+    apply 0 /proc/gpufreq/gpufreq_opp_idx
+
+    apply "stop 1" /proc/mtk_batoc_throttling/battery_oc_protect_stop
+    apply 0 /proc/pbm/pbm_limited
+    apply 0 /sys/kernel/ged/hal/ged_force_perf
+    apply 0 /sys/kernel/ged/gpu_bottom_freq
+    apply -1 /sys/kernel/helio-dvfsrc/dvfsrc_req_ddr_opp
+    apply -1 /sys/kernel/helio-dvfsrc/dvfsrc_force_vcore_dvfs_opp
+    apply 1 /sys/kernel/helio-dvfsrc/dvfsrc_qos_mode
+    devfreq_mid_perf /sys/class/devfreq/mtk-dvfsrc-devfreq
+    apply 0 /sys/kernel/ged/hal/freq_level_enable
+    apply 0 /sys/kernel/eara_thermal/enable
+}
+
+#==== [ THERMAL LIMIT ] ====
+fix_thermal_limit() {
+    for z in /sys/class/thermal/thermal_zone*/trip_point_*_temp; do
+        apply 105000 "$z"
+    done
+    for m in /sys/class/thermal/thermal_zone*/mode; do
+        apply disabled "$m"
+    done
+    for t in /sys/module/msm_thermal/core_control_enabled /sys/class/thermal/thermal_message/sconfig; do
+        apply 0 "$t"
+    done
+}
+
+#==== [ VM & I/O TWEAKS ] ====
+fix_vm_io() {
+    apply 300 /proc/sys/vm/dirty_expire_centisecs
+    apply 500 /proc/sys/vm/dirty_writeback_centisecs
+    apply 20  /proc/sys/vm/swappiness
+    apply 1   /proc/sys/vm/overcommit_memory
+    apply 85  /proc/sys/vm/overcommit_ratio
+    apply 12288 /proc/sys/vm/min_free_kbytes
+
+    for dev in /sys/block/*; do
+        apply mq-deadline "$dev/queue/scheduler"
+    done
+
+    for dir in /sys/block/mmcblk0 /sys/block/mmcblk1 /sys/block/sd*; do
+        [ -d "$dir/queue" ] || continue
+        apply 64 "$dir/queue/read_ahead_kb"
+        apply 64 "$dir/queue/nr_requests"
+    done
+}
+
+#==== [ ENTROPY ] ====
+fix_entropy() {
+    apply 256 /proc/sys/kernel/random/read_wakeup_threshold
+    apply 128 /proc/sys/kernel/random/write_wakeup_threshold
+}
+
+#==== [ ZRAM ] ====
+fix_zram() {
+    [ -d /sys/block/zram0 ] || return
+    apply lz4 /sys/block/zram0/comp_algorithm
+    apply 40  /proc/sys/vm/swappiness
+}
+
+#==== [ DISABLE DEBUG ] ====
+disable_tracing_debug() {
+    apply 0 /sys/kernel/debug/tracing/tracing_on
+    apply 0 /sys/kernel/debug/tracing/events/enable
+    logcat -G 1K 2>/dev/null
+}
+
+#==== [ DNS FLUSH ] ====
+flush_dns() {
+    ndc resolver flushdefaultif 2>/dev/null || killall -HUP dnsmasq 2>/dev/null
+}
+
+#==== [ BALANCE PROFILE ] ====
+balance_profile() {
+    apply 0 /proc/sys/kernel/split_lock_mitigate
+
+    [ -f /sys/kernel/debug/sched_features ] && {
+        apply NEXT_BUDDY /sys/kernel/debug/sched_features
+        apply NO_TTWU_QUEUE /sys/kernel/debug/sched_features
+    }
+
+    [ -d /dev/stune ] && {
+        apply 1 /dev/stune/top-app/schedtune.prefer_idle
+        apply 0 /dev/stune/top-app/schedtune.boost
+    }
+
+    apply 60 /proc/sys/vm/vfs_cache_pressure
+
+    for path in /sys/class/devfreq/*.ufshc; do
+        devfreq_mid_perf "$path"
+    done &
+    for path in /sys/class/devfreq/mmc*; do
+        devfreq_mid_perf "$path"
+    done &
+}
+
+#==== [ EXECUTE BALANCE TUNING ] ====

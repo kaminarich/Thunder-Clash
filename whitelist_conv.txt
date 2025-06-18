@@ -1,0 +1,7 @@
+com.whatsapp
+org.telegram.messenger
+io.nekohasekai.nekogram
+com.spotify.music
+com.google.android.apps.youtube.music
+com.tencent.ibg.joox
+com.apple.android.music

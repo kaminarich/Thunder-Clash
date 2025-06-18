@@ -2,25 +2,31 @@
 
 MODDIR=${0%/*}
 
-# Jalankan monitor game dan layar di background
-sh $MODDIR/converter_game.sh &
-sh $MODDIR/converter_whitelist.sh &
-sh $MODDIR/monitor_screen.sh &
-sh $MODDIR/monitor_game.sh &
-
 # Tunggu boot selesai
 while [ -z "$(getprop sys.boot_completed)" ]; do
-    sleep 10
+    sleep 5
 done
 
-# Fungsi
+# Permission biar pasti jalan
+chmod 0755 "$MODDIR/set_performance.sh"
+chmod 0755 "$MODDIR/set_schedutil.sh"
+chmod 0755 "$MODDIR/monitor_screen.sh"
+chmod 0755 "$MODDIR/gamelist_conv.sh"
+chmod 0755 "$MODDIR/converter_whitelist.sh"
+#early start schedutil
+sh "$MODDIR/set_schedutil.sh" &
+# Start background daemon
+sh "$MODDIR/monitor_screen.sh" &
+
+sleep 5
+DEVICE_NAME=$(getprop ro.product.name)
+su -lp 2000 -c "cmd notification post -S bigtext -t 'Thunder Clash⚡' Tag 'Applied💦 at $DEVICE_NAME'" >/dev/null &
+# Fungsi tweak
 tweak() {
-    if [ -e "$1" ]; then
-        echo "$2" > "$1" && echo "Applied $2 to $1"
-    fi
+    [ -e "$1" ] && echo "$2" > "$1" && echo "Applied $2 to $1"
 }
 
-# Mali Scheduler
+# Mali scheduler tweaks
 mali_dir=$(ls -d /sys/devices/platform/soc/*mali*/scheduling 2>/dev/null | head -n 1)
 mali1_dir=$(ls -d /sys/devices/platform/soc/*mali* 2>/dev/null | head -n 1)
 
@@ -37,7 +43,7 @@ tweak /proc/sys/kernel/panic_on_warn 0
 tweak /proc/sys/kernel/panic_on_oops 0
 tweak /proc/sys/kernel/panic 0
 
-# Hanya di service.sh karena properti tidak umum:
+# Properti performa
 resetprop -n PERF_RES_NET_BT_AUDIO_LOW_LATENCY 1
 resetprop -n PERF_RES_NET_WIFI_LOW_LATENCY 1
 resetprop -n PERF_RES_NET_MD_WEAK_SIG_OPT 1
@@ -45,9 +51,9 @@ resetprop -n PERF_RES_NET_NETD_BOOST_UID 1
 resetprop -n PERF_RES_NET_MD_HSR_MODE 1
 resetprop -n PERF_RES_THERMAL_POLICY -1
 
-# Optional jika device support:
+# Audio props
 resetprop -n persist.audio.fluence.mode endfire
 resetprop -n persist.audio.vr.enable true
 resetprop -n persist.audio.handset.mic digital
 resetprop -n af.resampler.quality 255
-resetprop -n mpq.audio.decode true
+resetprop -n mpq.audio.decode tru

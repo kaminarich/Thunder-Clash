@@ -1,0 +1,268 @@
+#!/system/bin/sh
+
+#==== [ UTILITIES ] ====
+apply() {
+    [ ! -f "$2" ] && return 1
+    chmod 644 "$2" 2>/dev/null
+    echo "$1" > "$2" 2>/dev/null
+    chmod 444 "$2" 2>/dev/null
+}
+
+write() {
+    [ ! -f "$2" ] && return 1
+    chmod 644 "$2" 2>/dev/null
+    echo "$1" > "$2" 2>/dev/null
+    chmod 444 "$2" 2>/dev/null
+}
+
+which_maxfreq() {
+    tr ' ' '\n' <"$1" | sort -nr | head -n 1
+}
+
+which_minfreq() {
+    tr ' ' '\n' <"$1" | grep -v '^[[:space:]]*$' | sort -n | head -n 1
+}
+
+which_midfreq() {
+    total_opp=$(wc -w <"$1")
+    mid_opp=$(((total_opp + 1) / 2))
+    tr ' ' '\n' <"$1" | grep -v '^[[:space:]]*$' | sort -nr | head -n $mid_opp | tail -n 1
+}
+
+#==== [ DEVFREQ UTILITY ] ====
+devfreq_max_perf() {
+    [ ! -f "$1/available_frequencies" ] && return 1
+    max_freq=$(which_maxfreq "$1/available_frequencies")
+    apply "$max_freq" "$1/max_freq"
+    apply "$max_freq" "$1/min_freq"
+}
+
+devfreq_mid_perf() {
+    [ ! -f "$1/available_frequencies" ] && return 1
+    max_freq=$(which_maxfreq "$1/available_frequencies")
+    mid_freq=$(which_midfreq "$1/available_frequencies")
+    apply "$max_freq" "$1/max_freq"
+    apply "$mid_freq" "$1/min_freq"
+}
+
+devfreq_min_perf() {
+    [ ! -f "$1/available_frequencies" ] && return 1
+    freq=$(which_minfreq "$1/available_frequencies")
+    apply "$freq" "$1/min_freq"
+    apply "$freq" "$1/max_freq"
+}
+
+devfreq_unlock() {
+    [ ! -f "$1/available_frequencies" ] && return 1
+    max_freq=$(which_maxfreq "$1/available_frequencies")
+    min_freq=$(which_minfreq "$1/available_frequencies")
+    write "$max_freq" "$1/max_freq"
+    write "$min_freq" "$1/min_freq"
+}
+
+#==== [ DETECTORS ] ====
+detect_storage_type() {
+    for dev in /sys/block/*; do
+        devname=$(basename "$dev")
+        rotational_file="$dev/queue/rotational"
+        model_path="/sys/class/block/$devname/device/model"
+        vendor_path="/sys/class/block/$devname/device/vendor"
+
+        [[ "$devname" == loop* || "$devname" == ram* || "$devname" == dm-* ]] && continue
+        [ ! -f "$rotational_file" ] && continue
+
+        rotational=$(cat "$rotational_file")
+        if [ "$rotational" = "0" ]; then
+            if grep -qi ufs "$model_path" 2>/dev/null || grep -qi ufs "$vendor_path" 2>/dev/null; then
+                echo "ufs"
+                return 0
+            elif grep -qi emmc "$model_path" 2>/dev/null || grep -qi emmc "$vendor_path" 2>/dev/null; then
+                echo "emmc"
+                return 0
+            else
+                case "$devname" in
+                    sd*|mmcblk*) echo "emmc"; return 0 ;;
+                    nvme*) echo "ufs"; return 0 ;;
+                esac
+            fi
+        fi
+    done
+    echo "unknown"
+    return 1
+}
+
+detect_gpu_governor_path() {
+    for path in \
+        /sys/class/devfreq/*mali*/governor \
+        /sys/class/devfreq/*gpu*/governor \
+        /sys/devices/platform/*mali*/devfreq/*/governor \
+        /sys/devices/platform/soc/*gpu*/governor \
+        /sys/devices/platform/*gpu*/governor
+    do
+        [ -f "$path" ] && { echo "$path"; return 0; }
+    done
+    local fallback="/sys/class/devfreq/13000000.mali/governor"
+    [ -f "$fallback" ] && echo "$fallback"
+}
+
+detect_cpu_governor_paths() {
+    for path in /sys/devices/system/cpu/cpufreq/policy*/scaling_governor; do
+        [ -f "$path" ] && echo "$path"
+    done
+}
+
+#==== [ GPU CONFIG ] ====
+set_gpu() {
+    local path=$(detect_gpu_governor_path)
+    [ -n "$path" ] || return
+    apply performance "$path"
+}
+
+#==== [ CPU CONFIG ] ====
+set_governor_all() {
+    local target="$1"
+    local state_file="/data/adb/modules/ThunderClash/.last_governor"
+    local cpu_paths=$(detect_cpu_governor_paths)
+    local first_path=$(echo "$cpu_paths" | head -n1)
+    local current=$(cat "$first_path" 2>/dev/null)
+
+    [ "$current" = "$target" ] && return
+
+    for path in $cpu_paths; do
+        apply "$target" "$path"
+    done
+    echo "$target" > "$state_file"
+}
+
+#==== [ CPUSET & GPU MTK TWEAKS ] ====
+fix_cpuset() {
+    apply "0-7" /dev/cpuset/top-app/cpus
+    apply "0-7" /dev/cpuset/foreground/cpus
+    apply "0-7" /dev/cpuset/foreground_window/cpus
+    apply "0-3" /dev/cpuset/background/cpus
+    apply "0-3" /dev/cpuset/system-background/cpus
+    apply "0-3" /dev/cpuset/restricted/cpus
+    apply "0-3" /dev/cpuset/camera-daemon/cpus
+
+    apply 0 /sys/kernel/ged/hal/custom_enable_kpi
+    apply 1 /sys/kernel/ged/gpu_tuner/custom_hint_set
+    apply 0 /sys/kernel/ged/gpu_tuner/debug
+    apply 0 /proc/gpufreq/gpufreq_opp_idx
+
+    if [ -f /proc/gpufreq/gpufreq_power_limited ]; then
+        for setting in ignore_batt_oc ignore_batt_percent ignore_low_batt ignore_thermal_protect ignore_pbm_limited; do
+            apply "$setting 1" /proc/gpufreq/gpufreq_power_limited
+        done
+    fi
+
+    apply "stop 1" /proc/mtk_batoc_throttling/battery_oc_protect_stop
+    apply 0 /proc/pbm/pbm_limited
+    apply 1 /sys/kernel/ged/hal/ged_force_perf
+    apply 0 /sys/kernel/ged/gpu_bottom_freq
+    apply -1 /sys/kernel/helio-dvfsrc/dvfsrc_req_ddr_opp
+    apply -1 /sys/kernel/helio-dvfsrc/dvfsrc_force_vcore_dvfs_opp
+    apply 1 /sys/kernel/helio-dvfsrc/dvfsrc_qos_mode
+    devfreq_mid_perf /sys/class/devfreq/mtk-dvfsrc-devfreq
+    apply 0 /sys/kernel/ged/hal/freq_level_enable
+    apply 0 /sys/kernel/eara_thermal/enable
+}
+
+#==== [ THERMAL DISABLE ] ====
+fix_thermal_limit() {
+    for z in /sys/class/thermal/thermal_zone*/trip_point_*_temp; do
+        apply 105000 "$z"
+    done
+    for m in /sys/class/thermal/thermal_zone*/mode; do
+        apply disabled "$m"
+    done
+    for t in /sys/module/msm_thermal/core_control_enabled /sys/class/thermal/thermal_message/sconfig; do
+        apply 0 "$t"
+    done
+}
+
+#==== [ VM & I/O TWEAKS ] ====
+fix_vm_io() {
+    apply 300 /proc/sys/vm/dirty_expire_centisecs
+    apply 500 /proc/sys/vm/dirty_writeback_centisecs
+    apply 10  /proc/sys/vm/swappiness
+    apply 1   /proc/sys/vm/overcommit_memory
+    apply 90  /proc/sys/vm/overcommit_ratio
+    apply 16384 /proc/sys/vm/min_free_kbytes
+
+    for dev in /sys/block/*; do
+        apply mq-deadline "$dev/queue/scheduler"
+    done
+
+    for dir in /sys/block/mmcblk0 /sys/block/mmcblk1 /sys/block/sd*; do
+        [ -d "$dir/queue" ] || continue
+        apply 32 "$dir/queue/read_ahead_kb"
+        apply 32 "$dir/queue/nr_requests"
+    done
+}
+
+#==== [ ENTROPY ] ====
+fix_entropy() {
+    apply 256 /proc/sys/kernel/random/read_wakeup_threshold
+    apply 128 /proc/sys/kernel/random/write_wakeup_threshold
+}
+
+#==== [ ZRAM ] ====
+fix_zram() {
+    [ -d /sys/block/zram0 ] || return
+    apply lz4 /sys/block/zram0/comp_algorithm
+    apply 30  /proc/sys/vm/swappiness
+}
+
+#==== [ DISABLE DEBUG ] ====
+disable_tracing_debug() {
+    apply 0 /sys/kernel/debug/tracing/tracing_on
+    apply 0 /sys/kernel/debug/tracing/events/enable
+    logcat -G 1K 2>/dev/null
+}
+
+#==== [ DNS FLUSH ] ====
+flush_dns() {
+    ndc resolver flushdefaultif 2>/dev/null || killall -HUP dnsmasq 2>/dev/null
+}
+
+#==== [ PERFORMANCE PROFILE ] ====
+performance_profile() {
+    bs_param="/sys/module/battery_saver/parameters/enabled"
+    [ -f "$bs_param" ] && {
+        if grep -qo '[0-9]\+' "$bs_param"; then
+            apply 0 "$bs_param"
+        else
+            apply N "$bs_param"
+        fi
+    }
+
+    apply 0 /proc/sys/kernel/split_lock_mitigate
+
+    if [ -f "/sys/kernel/debug/sched_features" ]; then
+        apply NEXT_BUDDY /sys/kernel/debug/sched_features
+        apply NO_TTWU_QUEUE /sys/kernel/debug/sched_features
+    fi
+
+    if [ -d "/dev/stune/" ]; then
+        apply 1 /dev/stune/top-app/schedtune.prefer_idle
+        apply 1 /dev/stune/top-app/schedtune.boost
+    fi
+
+    apply 80 /proc/sys/vm/vfs_cache_pressure
+
+    for path in /sys/class/devfreq/*.ufshc; do
+        devfreq_max_perf "$path"
+    done &
+    for path in /sys/class/devfreq/mmc*; do
+        devfreq_max_perf "$path"
+    done &
+
+    if [ -d /proc/ppm ]; then
+        cluster=-1
+        for path in /sys/devices/system/cpu/cpufreq/policy*; do
+            ((cluster++))
+            cpu_maxfreq=$(<"$path/cpuinfo_max_freq")
+            apply "$cluster $cpu_maxfreq" /proc/ppm/policy/hard_userlimit_max_cpu_freq
+        done
+    fi
+}
