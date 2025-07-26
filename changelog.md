@@ -1,0 +1,7 @@
+- Migrate from auto to Termux Interface to avoid background looping
+- Add Htop System Monitor
+- Add Device info
+- Normal Mode
+- Performance Mode
+- Vulkan & Skiaglthreaded Option
+- Animation Scale menu
