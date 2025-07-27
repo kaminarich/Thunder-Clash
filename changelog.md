@@ -1,1 +1,3 @@
 - Add Color Preset
+- Add Cooling Engine
+- Refactor thermal on Normal Mode
