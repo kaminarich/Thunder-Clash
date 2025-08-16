@@ -1,3 +1,3 @@
-- Add Color Preset
-- Add Cooling Engine
-- Refactor thermal on Normal Mode
+- Refactor Monitor Game dor better detection
+- Add Uninstall.sh
+- Refactor performance mode 
