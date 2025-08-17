@@ -1,3 +1,1 @@
-- Refactor Monitor Game dor better detection
-- Add Uninstall.sh
-- Refactor performance mode 
+- Used native dumpsys from Rust Cargo for game detection 
